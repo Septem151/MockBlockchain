@@ -8,7 +8,11 @@ public class Block {
 
     @Expose
     public String hash, prevHash;
+    
+    @Expose
+    public String difficulty;
 
+    @Expose
     public String merkleRoot;
 
     @Expose
@@ -36,9 +40,10 @@ public class Block {
     }
 
     public void mineBlock(String minerAddress, String difficulty) {
-        Transaction blockReward = Driver.coinbase.sendFunds(minerAddress, Driver.blockRewardValue);
+        Transaction blockReward = Blockchain.coinbase.sendFunds(minerAddress, Driver.blockRewardValue);
         this.addTransaction(blockReward);
         merkleRoot = StringUtil.getMerkleRoot(transactions);
+        this.difficulty = difficulty;
         while (Driver.hexToBigInt(hash).compareTo(Driver.hexToBigInt(difficulty)) > 0) {
             nonce++;
             hash = calculateHash();

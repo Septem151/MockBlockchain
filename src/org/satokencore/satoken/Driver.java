@@ -1,32 +1,44 @@
 package org.satokencore.satoken;
 
+import com.google.gson.GsonBuilder;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.security.Security;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
 import java.util.ArrayList;
 import java.util.Scanner;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 public class Driver {
 
     public static final Scanner scan = new Scanner(System.in);
-    public static final Blockchain blockchain = new Blockchain();
-    
+    public static Blockchain blockchain;
+    public static File chainDirectory;
+    public static File chainFile;
+
     /* 
      * Adjust these to suit your needs.
      * As of now though, there's no real way to guess which difficulty
      * is a good starting point for your target block time, but
      * setting the targetBlocksMined to a lower number will allow for
      * quicker testing of appropriate difficulty hex values.
-    */
-    public static String difficulty = "00008674c284cfb6f8dbf6a561e9492fc249fac73b7e53f6571c617aa3ec172c";
-    public static long targetAvgBlockTime = 1000;
-    public static int targetBlocksMined = 50;
+     */
+    public static String difficulty = "4C7FEF6BA544E18ADE6E72BF2CCA14C4749E0C35F9F6571C617AA3EC172C";
+    public static long targetAvgBlockTime = 10000;
+    public static int targetBlocksMined = 20;
     public static int blockRewardValue = 500;
     public static int rewardAdjustBlocks = 150;
     public static float rewardAdjust = 0.50f;
-    public static int automineBlocks = 25;
+    public static int automineBlocks = 100;
     public static final ArrayList<Account> accounts = new ArrayList<>();
-    public static Wallet coinbase;
     public static int selectedAccount = 0;
     public static boolean running = true;
     public static boolean automine = false;
@@ -36,21 +48,11 @@ public class Driver {
         if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
             Security.insertProviderAt(new BouncyCastleProvider(), 1);
         }
-        coinbase = new Wallet();
         accounts.add(new Account());
+        difficulty = StringUtil.padDifficulty(difficulty);
 
-        // Create Raw Genesis TX
-        Transaction genesisTransaction = new Transaction(coinbase.pubKey, coinbase.getAddress(), 2000000000, null);
-        genesisTransaction.generateSignature(coinbase.privKey);
-        genesisTransaction.transactionId = "0";
-        genesisTransaction.outputs.add(new TransactionOutput(genesisTransaction.recipient, genesisTransaction.value, genesisTransaction.transactionId));
-        Blockchain.UTXOs.put(genesisTransaction.outputs.get(0).id, genesisTransaction.outputs.get(0));
-
-        // Mine Genesis Block
-        Block genesis = new Block("0");
-        genesis.addTransaction(genesisTransaction);
-        System.out.println("Mining Genesis Block...");
-        addBlock(genesis);
+        // Create or Retrieve Blockchain
+        loadBlockchain();
 
         printHelp();
         while (running) {
@@ -72,6 +74,18 @@ public class Driver {
                 case "automine":
                     automine = !automine;
                     System.out.printf("%-22s%s", "Autominer: ", (automine) ? "ON" : "OFF");
+                    if (automine) {
+                        System.out.print("\nAutomine quantity: ");
+                        try {
+                            int input = Integer.parseInt(scan.nextLine());
+                            if (input <= 0) {
+                                throw new NumberFormatException();
+                            }
+                            automineBlocks = input;
+                        } catch (NumberFormatException e) {
+                            System.out.println("Only positive, non-zero integers may be entered. Defaulting to " + automineBlocks);
+                        }
+                    }
                     break;
                 case "wallet":
                     printWallet();
@@ -96,7 +110,44 @@ public class Driver {
                     break;
             }
         }
-        System.out.println("Exited.");
+        System.out.println("Saving Blockchain...");
+        saveBlockchain();
+    }
+
+    public static void loadBlockchain() {
+        System.out.println("Loading Chain Data...");
+        chainDirectory = new File("blockchain");
+        if (!chainDirectory.exists()) {
+            chainDirectory.mkdir();
+        }
+        chainFile = new File(chainDirectory, "chaindata.json");
+        try {
+            if (!chainFile.createNewFile()) {
+                BufferedReader br = new BufferedReader(new FileReader(chainFile));
+                blockchain = new GsonBuilder().registerTypeAdapter(ECPublicKey.class, new InterfaceAdapter<ECPublicKey>())
+                        .registerTypeAdapter(ECPrivateKey.class, new InterfaceAdapter<ECPrivateKey>())
+                        .create().fromJson(br, Blockchain.class);
+                br.close();
+            } else {
+                System.out.println("Creating new Blockchain...");
+                blockchain = new Blockchain();
+            }
+        } catch (IOException ex) {
+            Logger.getLogger(Driver.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        System.out.println("Chain Data Loaded.");
+    }
+
+    public static void saveBlockchain() {
+        System.out.println("Saving Chain Data...");
+        try {
+            BufferedWriter bw = new BufferedWriter(new FileWriter(chainFile, false));
+            bw.write(blockchain.getSaveData());
+            bw.close();
+        } catch (IOException ex) {
+            Logger.getLogger(Driver.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        System.out.println("Chain Data Saved.");
     }
 
     public static void newAccount() {
@@ -136,7 +187,7 @@ public class Driver {
         System.out.printf("\t%-22s%s\n", "mine", "Mine new block(s) to the blockchain.");
         System.out.printf("\t%-22s%s\n", "blockchain", "View the blockchain.");
         System.out.printf("\t%-22s%-22s%s\n", "automine", "Mines " + automineBlocks + " blocks.", (automine) ? "ON" : "OFF");
-        
+
         System.out.println("\nACCOUNTS: ");
         System.out.printf("\t%-22s%s\n", "wallet", "View your wallet.");
         System.out.printf("\t%-22s%s\n", "keys", "View the wallet's Private/Public keypair.");
@@ -192,7 +243,7 @@ public class Driver {
             if (automineLeft <= 0) {
                 mining = !mining;
             }
-            if ((blockchain.size()+1 % targetBlocksMined) == 0) {
+            if ((blockchain.size() + 1) % targetBlocksMined == 0) {
                 startTime = blockchain.getBlock(startIndex).getTimestamp();
                 elapsedTime = blockchain.getBlock(blockchain.size() - 1).getTimestamp() - startTime;
                 avgBlockTime = elapsedTime / targetBlocksMined;
@@ -202,7 +253,7 @@ public class Driver {
                 // Adjust difficulty
                 BigInteger newDiff = hexToBigInt(difficulty);
                 BigInteger prevDiff = hexToBigInt(difficulty);
-                double diffAdjust = (double)avgBlockTime / targetAvgBlockTime;
+                double diffAdjust = (double) avgBlockTime / targetAvgBlockTime;
                 if (diffAdjust > 1.08) {
                     newDiff = newDiff.divide(BigInteger.valueOf(100));
                     newDiff = newDiff.multiply(BigInteger.valueOf(108));
@@ -222,7 +273,7 @@ public class Driver {
 
             // Adjust block reward value
             if ((blockchain.size() % rewardAdjustBlocks) == 0) {
-                blockRewardValue = (int)(blockRewardValue * rewardAdjust);
+                blockRewardValue = (int) (blockRewardValue * rewardAdjust);
             }
 
             if (automine) {
