@@ -50,7 +50,7 @@ public class Wallet {
         for (Map.Entry<String, TransactionOutput> entry : Blockchain.UTXOs.entrySet()) {
             TransactionOutput UTXO = entry.getValue();
             if (UTXO.isMine(StringUtil.getAddressOfECPubKey(pubKey))) {
-                UTXOs.put(UTXO.id, UTXO);
+                UTXOs.put(UTXO.coinId, UTXO);
                 balance += UTXO.value;
             }
         }
@@ -69,7 +69,7 @@ public class Wallet {
         for (Map.Entry<String, TransactionOutput> entry : UTXOs.entrySet()) {
             TransactionOutput UTXO = entry.getValue();
             total += UTXO.value;
-            inputs.add(new TransactionInput(UTXO.id));
+            inputs.add(new TransactionInput(UTXO.coinId));
             if (total > value) break;
         }
         

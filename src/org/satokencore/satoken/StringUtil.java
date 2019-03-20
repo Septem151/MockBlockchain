@@ -183,4 +183,13 @@ public class StringUtil {
         String merkleRoot = (treeLayer.size() == 1) ? treeLayer.get(0) : "";
         return merkleRoot;
     }
+    
+    public static String padDifficulty(String difficulty) {
+        String res = "";
+        for(int i=difficulty.length(); i<64; i++) {
+            res += "0";
+        }
+        res += difficulty;
+        return res.toLowerCase();
+    }
 }

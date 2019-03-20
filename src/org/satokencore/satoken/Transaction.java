@@ -20,7 +20,7 @@ public class Transaction {
     public ArrayList<TransactionInput> inputs = new ArrayList<>();
 
     @Expose
-    public ArrayList<TransactionOutput> outputs = new ArrayList<>();
+    public ArrayList<TransactionOutput> utxos = new ArrayList<>();
 
     private static int sequence = 0;
 
@@ -74,12 +74,12 @@ public class Transaction {
 
         // Generate TransactionOutputs
         int change = getInputsValue() - value;
-        outputs.add(new TransactionOutput(this.recipient, value, transactionId));
-        outputs.add(new TransactionOutput(StringUtil.getAddressOfECPubKey(this.sender), change, transactionId));
+        utxos.add(new TransactionOutput(this.recipient, value, transactionId));
+        utxos.add(new TransactionOutput(StringUtil.getAddressOfECPubKey(this.sender), change, transactionId));
 
         // Add Outputs to UTXO List
-        outputs.forEach((output) -> {
-            Blockchain.UTXOs.put(output.id, output);
+        utxos.forEach((output) -> {
+            Blockchain.UTXOs.put(output.coinId, output);
         });
 
         // Remove TransactionInputs from UTXO List
@@ -87,7 +87,7 @@ public class Transaction {
             if (input.UTXO == null) {
                 continue;
             }
-            Blockchain.UTXOs.remove(input.UTXO.id);
+            Blockchain.UTXOs.remove(input.UTXO.coinId);
         }
 
         return true;
@@ -106,8 +106,8 @@ public class Transaction {
 
     public int getOutputsValue() {
         int total = 0;
-        for (TransactionOutput output : outputs) {
-            total += output.value;
+        for (TransactionOutput utxo : utxos) {
+            total += utxo.value;
         }
         return total;
     }

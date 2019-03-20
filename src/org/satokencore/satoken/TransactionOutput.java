@@ -5,7 +5,8 @@ import com.google.gson.annotations.Expose;
 
 public class TransactionOutput {
 
-    public String id;
+    @Expose
+    public String coinId;
     
     public String recipient;
     
@@ -22,7 +23,7 @@ public class TransactionOutput {
         this.address = recipient;
         this.value = value;
         this.parentTransactionId = parentTransactionId;
-        this.id = StringUtil.applySha256(recipient
+        this.coinId = StringUtil.applySha256(recipient
                 + Integer.toString(value) + parentTransactionId);
     }
     

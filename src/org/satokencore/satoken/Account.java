@@ -16,45 +16,48 @@ public class Account {
     public void init() {
         boolean confirmed = false;
         while (!confirmed) {
-            System.out.println("New Account");
-            System.out.print("Name: ");
-            name = Driver.scan.nextLine();
-
-            System.out.print("Password: ");
-            password = Driver.scan.nextLine();
-
-            System.out.print("Repeat Password: ");
-            confirmed = (Driver.scan.nextLine().equals(password));
-
-            if (!confirmed) {
-                System.out.println("Passwords do not match.");
-            } else {
-                System.out.println("Proceed to create wallet? (Y/n)");
-                switch (Driver.scan.nextLine().toUpperCase()) {
-                    case "Y":
-                        confirmed = true;
-                        break;
-                    case "N":
-                        confirmed = false;
-                        break;
-                    default:
-                        System.out.println("Not a recognized response.");
-                        confirmed = false;
-                        break;
-                }
-            }
+//            System.out.println("New Account");
+//            System.out.print("Name: ");
+//            name = Driver.scan.nextLine();
+//
+//            System.out.print("Password: ");
+//            password = Driver.scan.nextLine();
+//
+//            System.out.print("Repeat Password: ");
+//            confirmed = (Driver.scan.nextLine().equals(password));
+//
+//            if (!confirmed) {
+//                System.out.println("Passwords do not match.");
+//            } else {
+//                System.out.println("Proceed to create wallet? (Y/n)");
+//                switch (Driver.scan.nextLine().toUpperCase()) {
+//                    case "Y":
+//                        confirmed = true;
+//                        break;
+//                    case "N":
+//                        confirmed = false;
+//                        break;
+//                    default:
+//                        System.out.println("Not a recognized response.");
+//                        confirmed = false;
+//                        break;
+//                }
+//            }
+            name = "";
+            password = "";
             
+            confirmed = true;
             System.out.println("Configuring new wallet...");
             wallet = new Wallet();
         }
     }
     
     public boolean signIn() {
-        System.out.print("Enter Account password: ");
-        if (!password.equals(Driver.scan.nextLine())) {
-            System.out.println("\nPasswords do not match.");
-            return false;
-        }
+//        System.out.print("Enter Account password: ");
+//        if (!password.equals(Driver.scan.nextLine())) {
+//            System.out.println("\nPasswords do not match.");
+//            return false;
+//        }
         return true;
     }
     
