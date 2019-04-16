@@ -1,17 +1,29 @@
 package org.satokencore.satoken;
 
+import com.google.common.reflect.TypeToken;
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigInteger;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.security.KeyPair;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.Security;
 import java.security.interfaces.ECPrivateKey;
-import java.security.interfaces.ECPublicKey;
+import java.security.spec.InvalidKeySpecException;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -19,10 +31,13 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 public class Driver {
 
+    public static final DecimalFormat stcFormat = new DecimalFormat("#,##0.000");
     public static final Scanner scan = new Scanner(System.in);
+    public static final ArrayList<String> wordList = new ArrayList<>();
     public static Blockchain blockchain;
     public static File chainDirectory;
     public static File chainFile;
+    public static File accountsFile;
 
     /* 
      * Adjust these to suit your needs.
@@ -31,14 +46,14 @@ public class Driver {
      * setting the targetBlocksMined to a lower number will allow for
      * quicker testing of appropriate difficulty hex values.
      */
-    public static String difficulty = "4C7FEF6BA544E18ADE6E72BF2CCA14C4749E0C35F9F6571C617AA3EC172C";
-    public static long targetAvgBlockTime = 10000;
-    public static int targetBlocksMined = 20;
-    public static int blockRewardValue = 500;
-    public static int rewardAdjustBlocks = 150;
+    public static String difficulty = "000001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    public static long targetAvgBlockTime = 60000;
+    public static int targetBlocksMined = 240;
+    public static int blockRewardValue = 50000;
+    public static int rewardAdjustBlocks = 1440;
     public static float rewardAdjust = 0.50f;
-    public static int automineBlocks = 100;
-    public static final ArrayList<Account> accounts = new ArrayList<>();
+    public static int automineBlocks = 240;
+    public static ArrayList<Account> accounts = new ArrayList<>();
     public static int selectedAccount = 0;
     public static boolean running = true;
     public static boolean automine = false;
@@ -48,9 +63,12 @@ public class Driver {
         if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
             Security.insertProviderAt(new BouncyCastleProvider(), 1);
         }
-        accounts.add(new Account());
+        loadWordList();
         difficulty = StringUtil.padDifficulty(difficulty);
 
+        chainDirectory = new File("blockchain");
+        // Create or Retrieve Account(s)
+        loadWallets();
         // Create or Retrieve Blockchain
         loadBlockchain();
 
@@ -62,7 +80,7 @@ public class Driver {
                     if (currentBlock == null) {
                         currentBlock = new Block(blockchain.getLastBlock().hash);
                     }
-                    accounts.get(selectedAccount).createTransaction(currentBlock);
+                    accounts.get(selectedAccount).createTransaction(currentBlock, blockchain);
                     System.out.println("Transaction will be included in next block.");
                     break;
                 case "mine":
@@ -110,13 +128,12 @@ public class Driver {
                     break;
             }
         }
-        System.out.println("Saving Blockchain...");
         saveBlockchain();
+        saveWallets();
     }
 
     public static void loadBlockchain() {
         System.out.println("Loading Chain Data...");
-        chainDirectory = new File("blockchain");
         if (!chainDirectory.exists()) {
             chainDirectory.mkdir();
         }
@@ -124,15 +141,19 @@ public class Driver {
         try {
             if (!chainFile.createNewFile()) {
                 BufferedReader br = new BufferedReader(new FileReader(chainFile));
-                blockchain = new GsonBuilder().registerTypeAdapter(ECPublicKey.class, new InterfaceAdapter<ECPublicKey>())
-                        .registerTypeAdapter(ECPrivateKey.class, new InterfaceAdapter<ECPrivateKey>())
+                blockchain = new GsonBuilder()
                         .create().fromJson(br, Blockchain.class);
+                difficulty = blockchain.getBlock(blockchain.size() - 1).difficulty;
+                KeyPair coinbaseKeyPair = StringUtil.LoadKeyPair("blockchain", "coinbase");
+                Blockchain.coinbase.keys.add(coinbaseKeyPair);
                 br.close();
             } else {
                 System.out.println("Creating new Blockchain...");
                 blockchain = new Blockchain();
+                Blockchain.coinbase.init();
+                blockchain.mineGenesisBlock();
             }
-        } catch (IOException ex) {
+        } catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException | NoSuchProviderException ex) {
             Logger.getLogger(Driver.class.getName()).log(Level.SEVERE, null, ex);
         }
         System.out.println("Chain Data Loaded.");
@@ -150,10 +171,48 @@ public class Driver {
         System.out.println("Chain Data Saved.");
     }
 
+    public static void saveWallets() {
+        System.out.println("Saving Account Data...");
+        try {
+            Blockchain.coinbase.saveWallet("blockchain", "coinbase");
+            BufferedWriter bw = new BufferedWriter(new FileWriter(accountsFile, false));
+            bw.write(new GsonBuilder()
+                    .create().toJson(accounts));
+            bw.close();
+        } catch (IOException ex) {
+            Logger.getLogger(Driver.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        System.out.println("Account Data Saved.");
+    }
+
+    public static void loadWallets() {
+        System.out.println("Loading Account Data...");
+        if (!chainDirectory.exists()) {
+            chainDirectory.mkdir();
+        }
+        accountsFile = new File(chainDirectory, "accountdata.json");
+        try {
+            if (!accountsFile.createNewFile()) {
+                BufferedReader br = new BufferedReader(new FileReader(accountsFile));
+                TypeToken<List<Account>> token = new TypeToken<List<Account>>() {
+                };
+                accounts = new Gson().fromJson(br, token.getType());
+                br.close();
+            } else {
+                System.out.println("Creating New Account...");
+                newAccount();
+            }
+        } catch (IOException ex) {
+            Logger.getLogger(Driver.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        System.out.println("Account Data Loaded.");
+    }
+
     public static void newAccount() {
-        accounts.add(new Account());
+        Account account = new Account();
+        accounts.add(account);
         selectedAccount = accounts.size() - 1;
-        System.out.println("Switch to account #" + selectedAccount + ".");
+        System.out.println("Switched to account #" + selectedAccount + ".");
     }
 
     public static void switchAccount() {
@@ -162,14 +221,11 @@ public class Driver {
         while (!confirmed) {
             System.out.print("Account #: ");
             try {
-                System.out.println();
                 selectedAccount = Integer.parseInt(scan.nextLine());
                 if (selectedAccount < accounts.size()) {
                     System.out.println("Switching to account #" + selectedAccount + ".");
                     if (!accounts.get(selectedAccount).signIn()) {
                         selectedAccount = prevAccount;
-                    } else {
-                        System.out.println("Account unlocked.");
                     }
                     confirmed = true;
                 } else {
@@ -203,20 +259,27 @@ public class Driver {
     }
 
     public static void printKeyInfo() {
-        System.out.println(
-                System.lineSeparator()
-                + "Public Key: " + getWallet().getAddress() + System.lineSeparator()
-                + "Private Key: " + getWallet().getPrivAddress()
-        );
+        for (KeyPair keyPair : getWallet().keys) {
+            System.out.println(
+                    System.lineSeparator()
+                    + "Public Key: " + StringUtil.getAddressOfPubHex(StringUtil.pubKeyToHex(keyPair.getPublic())) + System.lineSeparator()
+                    + "Private Key: " + StringUtil.getAddressOfECPrivKey((ECPrivateKey) keyPair.getPrivate())
+            );
+        }
+
     }
 
     public static void printWallet() {
-        System.out.println(
-                System.lineSeparator()
-                + "Account Id: " + selectedAccount + System.lineSeparator()
-                + "Address: " + getWallet().getAddress() + System.lineSeparator()
-                + "Balance: " + getWallet().getBalance() + " STC"
-        );
+        getWallet().getBalance(blockchain);
+        System.out.println(System.lineSeparator() + "Account Id: " + selectedAccount);
+        for (KeyPair keyPair : getWallet().keys) {
+            System.out.println(
+                    "Address: " + StringUtil.getAddressOfPubHex(StringUtil.pubKeyToHex(keyPair.getPublic()))
+            );
+        }
+
+        double stcBalance = getWallet().getBalance(blockchain) / 1000.0;
+        System.out.println("Balance: " + stcFormat.format(stcBalance) + " STC");
     }
 
     public static void printChain() {
@@ -243,6 +306,10 @@ public class Driver {
             if (automineLeft <= 0) {
                 mining = !mining;
             }
+            System.out.println("Difficulty: " + blockchain.getBlock(blockchain.size() - 1).difficulty);
+            startTime = blockchain.getBlock(blockchain.size() - 2).getTimestamp();
+            elapsedTime = blockchain.getBlock(blockchain.size() - 1).getTimestamp() - startTime;
+            System.out.println("Elapsed Time: " + elapsedTime);
             if ((blockchain.size() + 1) % targetBlocksMined == 0) {
                 startTime = blockchain.getBlock(startIndex).getTimestamp();
                 elapsedTime = blockchain.getBlock(blockchain.size() - 1).getTimestamp() - startTime;
@@ -254,12 +321,15 @@ public class Driver {
                 BigInteger newDiff = hexToBigInt(difficulty);
                 BigInteger prevDiff = hexToBigInt(difficulty);
                 double diffAdjust = (double) avgBlockTime / targetAvgBlockTime;
-                if (diffAdjust > 1.08) {
+                if (diffAdjust > 1.25) {
                     newDiff = newDiff.divide(BigInteger.valueOf(100));
-                    newDiff = newDiff.multiply(BigInteger.valueOf(108));
-                } else if (diffAdjust < 0.92) {
+                    newDiff = newDiff.multiply(BigInteger.valueOf(125));
+                } else if (diffAdjust < 0.75) {
                     newDiff = newDiff.divide(BigInteger.valueOf(100));
-                    newDiff = newDiff.multiply(BigInteger.valueOf(92));
+                    newDiff = newDiff.multiply(BigInteger.valueOf(75));
+                } else {
+                    newDiff = newDiff.divide(BigInteger.valueOf(100));
+                    newDiff = newDiff.multiply(BigInteger.valueOf((long) (diffAdjust * 100)));
                 }
                 difficulty = String.format("%064x", newDiff);
                 if (newDiff.compareTo(prevDiff) < 0) {
@@ -328,9 +398,41 @@ public class Driver {
     }
 
     public static void addBlock(Block block) {
-        block.mineBlock(getWallet().getAddress(), difficulty);
+        block.mineBlock(getWallet().getChangeKey(), difficulty, blockchain);
         blockchain.addBlock(block);
         System.out.println("Block #" + (blockchain.size() - 1) + " Mined! : " + blockchain.getBlock(blockchain.size() - 1).hash);
+    }
+
+    public static void loadWordList() {
+        try {
+            URL url = new URL("https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt");
+            URLConnection connection = url.openConnection();
+            FileOutputStream fos;
+            File file = new File("Word List.txt");
+            try (InputStream in = connection.getInputStream()) {
+                fos = new FileOutputStream(file);
+                byte[] buf = new byte[512];
+                while (true) {
+                    int len = in.read(buf);
+                    if (len == -1) {
+                        break;
+                    }
+                    fos.write(buf, 0, len);
+                }
+            }
+            fos.flush();
+            fos.close();
+            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    wordList.add(line);
+                }
+            }
+        } catch (MalformedURLException ex) {
+            throw new RuntimeException(ex);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
 }

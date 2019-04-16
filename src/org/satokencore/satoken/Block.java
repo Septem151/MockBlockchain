@@ -8,7 +8,7 @@ public class Block {
 
     @Expose
     public String hash, prevHash;
-    
+
     @Expose
     public String difficulty;
 
@@ -16,47 +16,47 @@ public class Block {
     public String merkleRoot;
 
     @Expose
+    private long timestamp;
+
+    @Expose
+    private long nonce;
+
+    @Expose
     private final ArrayList<Transaction> transactions = new ArrayList<>();
-
-    @Expose
-    private final long timestamp;
-
-    @Expose
-    private int nonce;
 
     public Block(String prevHash) {
         this.prevHash = prevHash;
-        timestamp = new Date().getTime();
+
         hash = calculateHash();
     }
 
     public String calculateHash() {
         String calculatedHash = StringUtil.applySha256(
                 prevHash
-                + Long.toString(timestamp)
-                + Integer.toString(nonce)
+                + Long.toHexString(nonce)
                 + merkleRoot);
         return calculatedHash;
     }
 
-    public void mineBlock(String minerAddress, String difficulty) {
-        Transaction blockReward = Blockchain.coinbase.sendFunds(minerAddress, Driver.blockRewardValue);
-        this.addTransaction(blockReward);
+    public void mineBlock(String minerPubHex, String difficulty, Blockchain blockchain) {
+        Transaction blockReward = Blockchain.coinbase.sendFunds(minerPubHex, Driver.blockRewardValue, blockchain);
+        this.addTransaction(blockReward, blockchain);
         merkleRoot = StringUtil.getMerkleRoot(transactions);
+        hash = calculateHash();
         this.difficulty = difficulty;
         while (Driver.hexToBigInt(hash).compareTo(Driver.hexToBigInt(difficulty)) > 0) {
             nonce++;
             hash = calculateHash();
         }
-
+        timestamp = new Date().getTime();
     }
 
-    public boolean addTransaction(Transaction transaction) {
+    public boolean addTransaction(Transaction transaction, Blockchain blockchain) {
         if (transaction == null) {
             return false;
         }
         if (!prevHash.equals("0")) {
-            if (!transaction.processTransaction()) {
+            if (!transaction.processTransaction(blockchain)) {
                 System.out.println("Transaction failed to process.");
                 return false;
             }

@@ -2,33 +2,46 @@ package org.satokencore.satoken;
 
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.Expose;
+import java.io.IOException;
 import java.security.interfaces.ECPrivateKey;
-import java.security.interfaces.ECPublicKey;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 public class Blockchain {
 
     @Expose
     private final ArrayList<Block> blocks;
-    public static HashMap<String, TransactionOutput> UTXOs = new HashMap<String, TransactionOutput>();
+
+    public HashMap<String, TransactionOutput> UTXOs;
     public static final int minimumTransaction = 1;
-    public static Wallet coinbase;
+    public static Wallet coinbase = new Wallet();
 
     public Blockchain() {
         blocks = new ArrayList<>();
-        coinbase = new Wallet();
+        UTXOs = new HashMap<>();
+    }
+
+    public void mineGenesisBlock() {
         // Create Raw Genesis TX
-        Transaction genesisTransaction = new Transaction(coinbase.pubKey, coinbase.getAddress(), 2000000000, null);
-        genesisTransaction.generateSignature(coinbase.privKey);
+        LinkedHashMap<String, Integer> recipients = new LinkedHashMap<>();
+        String coinbaseAddress = StringUtil.getAddressOfPubHex(
+                StringUtil.pubKeyToHex(
+                        coinbase.keys.get(0).getPublic()));
+        int startValue = 144001993;
+        recipients.put(coinbaseAddress, startValue);
+        ECPrivateKey[] privKeys = new ECPrivateKey[] { (ECPrivateKey)coinbase.keys.get(0).getPrivate() };
+        Transaction genesisTransaction = new Transaction(recipients, null, null);
         genesisTransaction.transactionId = "0";
-        genesisTransaction.utxos.add(new TransactionOutput(genesisTransaction.recipient, genesisTransaction.value, genesisTransaction.transactionId));
-        Blockchain.UTXOs.put(genesisTransaction.utxos.get(0).coinId, genesisTransaction.utxos.get(0));
+        genesisTransaction.utxos.add(new TransactionOutput(coinbaseAddress, startValue, genesisTransaction.transactionId));
+        genesisTransaction.generateSignature(privKeys);
+        this.UTXOs.put(genesisTransaction.utxos.get(0).coinId, genesisTransaction.utxos.get(0));
 
         // Mine Genesis Block
         Block genesis = new Block("0");
-        genesis.addTransaction(genesisTransaction);
-        this.addBlock(genesis);
+        genesis.addTransaction(genesisTransaction, this);
+        genesis.mineBlock(null, Driver.difficulty, this);
+        blocks.add(genesis);
     }
 
     public void addBlock(Block block) {
@@ -51,9 +64,8 @@ public class Blockchain {
         return blocks.size();
     }
 
-    public String getSaveData() {
-        return new GsonBuilder().registerTypeAdapter(ECPublicKey.class, new InterfaceAdapter<ECPublicKey>())
-                .registerTypeAdapter(ECPrivateKey.class, new InterfaceAdapter<ECPrivateKey>())
+    public String getSaveData() throws IOException {
+        return new GsonBuilder()
                 .create().toJson(this);
     }
 

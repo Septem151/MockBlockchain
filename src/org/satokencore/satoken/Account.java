@@ -5,12 +5,10 @@ public class Account {
     private String name;
     private String password;
     private Wallet wallet;
-    private static int sequence = 0;
     public String id;
 
     public Account() {
         init();
-        id = calculateHash();
     }
 
     public void init() {
@@ -45,13 +43,13 @@ public class Account {
 //            }
             name = "";
             password = "";
-            
+
             confirmed = true;
-            System.out.println("Configuring new wallet...");
             wallet = new Wallet();
+            wallet.init();
         }
     }
-    
+
     public boolean signIn() {
 //        System.out.print("Enter Account password: ");
 //        if (!password.equals(Driver.scan.nextLine())) {
@@ -60,23 +58,23 @@ public class Account {
 //        }
         return true;
     }
-    
-    private String calculateHash() {
-        sequence++;
-        return StringUtil.applySha256(
-                name + password + String.valueOf(sequence)
-        );
-    }
 
-    public void createTransaction(Block block) {
+    public void createTransaction(Block block, Blockchain blockchain) {
         String receivingAddress = "";
         int value = 0;
         boolean confirmed = false;
         while (!confirmed) {
-            System.out.print("Receiving address: ");
-            receivingAddress = Driver.scan.nextLine();
-            System.out.print("Amount STC: ");
             try {
+                System.out.print("Receiving Address: ");
+//                int accIndex = Integer.parseInt(Driver.scan.nextLine());
+//                if (accIndex >= Driver.accounts.size()) {
+//                    System.out.println("Account does not exist.");
+//                    confirmed = false;
+//                    continue;
+//                }
+//                receivingAddress = Driver.accounts.get(accIndex).getWallet().getAddress();
+                receivingAddress = Driver.scan.nextLine();
+                System.out.print("Amount STC: ");
                 value = Integer.parseInt(Driver.scan.nextLine());
                 System.out.println("Confirm Transaction (Y/n)");
                 switch (Driver.scan.nextLine().toUpperCase()) {
@@ -95,7 +93,7 @@ public class Account {
                 System.out.println("Not a recognized response.");
             }
         }
-        block.addTransaction(wallet.sendFunds(receivingAddress, value));
+        block.addTransaction(wallet.sendFunds(receivingAddress, value, blockchain), blockchain);
     }
 
     public void changeName() {

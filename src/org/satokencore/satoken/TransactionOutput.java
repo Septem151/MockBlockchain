@@ -5,10 +5,8 @@ import com.google.gson.annotations.Expose;
 
 public class TransactionOutput {
 
-    @Expose
+
     public String coinId;
-    
-    public String recipient;
     
     @Expose
     public String address;
@@ -18,16 +16,15 @@ public class TransactionOutput {
     
     public String parentTransactionId;
 
-    public TransactionOutput(String recipient, int value, String parentTransactionId) {
-        this.recipient = recipient;
-        this.address = recipient;
+    public TransactionOutput(String address, int value, String parentTransactionId) {
+        this.address = address;
         this.value = value;
         this.parentTransactionId = parentTransactionId;
-        this.coinId = StringUtil.applySha256(recipient
+        this.coinId = StringUtil.applySha256(address
                 + Integer.toString(value) + parentTransactionId);
     }
     
     public boolean isMine(String address) {
-        return (recipient.equals(address));
+        return (this.address.equals(address));
     }
 }

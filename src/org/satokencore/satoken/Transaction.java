@@ -1,22 +1,28 @@
 package org.satokencore.satoken;
 
 import com.google.gson.annotations.Expose;
-import java.security.PrivateKey;
+import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class Transaction {
 
     @Expose
     public String transactionId;
 
-    public ECPublicKey sender;
-    public String recipient;
+    //public LinkedHashMap<ECPublicKey, Integer> senders;
+    public LinkedHashMap<String, Integer> recipients;
 
-    public int value;
+    public int valueTransacted;
 
-    public byte[] signature;
+    public String[] signatures;
 
+    private ECPublicKey[] pubKeys;
+    private String changePubHex;
+
+    @Expose
     public ArrayList<TransactionInput> inputs = new ArrayList<>();
 
     @Expose
@@ -24,46 +30,71 @@ public class Transaction {
 
     private static int sequence = 0;
 
-    public Transaction(ECPublicKey from, String to, int value, ArrayList<TransactionInput> inputs) {
-        this.sender = from;
-        this.recipient = to;
-        this.value = value;
+    public Transaction(LinkedHashMap<String, Integer> recipients, ArrayList<TransactionInput> inputs, String changePubHex) {
+        if (inputs != null) {
+            signatures = new String[inputs.size()];
+            pubKeys = new ECPublicKey[inputs.size()];
+        } else {
+            signatures = new String[1];
+            pubKeys = new ECPublicKey[1];
+        }
+        this.recipients = recipients;
         this.inputs = inputs;
+        valueTransacted = 0;
+        this.changePubHex = changePubHex;
         transactionId = calculateHash();
     }
 
     private String calculateHash() {
         sequence++;
+        String from = "";
+        String to = "";
+        if (inputs == null) {
+            return "0";
+        }
+        for (TransactionInput input : inputs) {
+            from += String.valueOf(input.transactionOutputId);
+        }
+        for (Map.Entry<String, Integer> entry : recipients.entrySet()) {
+            to += entry.getKey();
+            to += String.valueOf(entry.getValue());
+            valueTransacted += entry.getValue();
+        }
         return StringUtil.applySha256(
-                StringUtil.getStringFromPubKey(sender)
-                + recipient
-                + Integer.toString(value) + sequence
+                from
+                + to
+                + Integer.toString(valueTransacted)
+                + ((changePubHex != null) ? changePubHex : "")
+                + sequence
         );
     }
 
-    public void generateSignature(PrivateKey privKey) {
-        String data = StringUtil.getStringFromPubKey(sender)
-                + recipient
-                + Integer.toString(value);
-        signature = StringUtil.applyECDSASig(privKey, data);
+    public void generateSignature(ECPrivateKey[] privKeys) {
+        for (int i = 0; i < privKeys.length; i++) {
+            pubKeys[i] = StringUtil.getPublicKey(privKeys[i]);
+            signatures[i] = StringUtil.applyECDSASig(privKeys[i], transactionId);
+        }
     }
 
     public boolean verifySignature() {
-        String data = StringUtil.getStringFromPubKey(sender)
-                + recipient
-                + Integer.toString(value);
-        return StringUtil.verifyECDSASig(sender, data, signature);
+        for (int i = 0; i < signatures.length; i++) {
+            String pubHex = StringUtil.pubKeyToHex(pubKeys[i]);
+            if (!StringUtil.verifyECDSASig(pubHex, transactionId, signatures[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    public boolean processTransaction() {
-        if (verifySignature() == false) {
+    public boolean processTransaction(Blockchain blockchain) {
+        if (!verifySignature()) {
             System.out.println("Transaction Signature failed to verify.");
             return false;
         }
 
         // Gather Unspent Transaction Inputs
         inputs.forEach((input) -> {
-            input.UTXO = Blockchain.UTXOs.get(input.transactionOutputId);
+            input.UTXO = blockchain.UTXOs.get(input.transactionOutputId);
         });
 
         // Check transaction is valid
@@ -73,13 +104,17 @@ public class Transaction {
         }
 
         // Generate TransactionOutputs
-        int change = getInputsValue() - value;
-        utxos.add(new TransactionOutput(this.recipient, value, transactionId));
-        utxos.add(new TransactionOutput(StringUtil.getAddressOfECPubKey(this.sender), change, transactionId));
+        int change = getInputsValue() - valueTransacted;
+        for (Map.Entry<String, Integer> entry : recipients.entrySet()) {
+            utxos.add(new TransactionOutput(entry.getKey(), entry.getValue(), transactionId));
+        }
+        if (changePubHex != null) {
+            utxos.add(new TransactionOutput(StringUtil.getAddressOfPubHex(changePubHex), change, transactionId));
+        }
 
         // Add Outputs to UTXO List
         utxos.forEach((output) -> {
-            Blockchain.UTXOs.put(output.coinId, output);
+            blockchain.UTXOs.put(output.coinId, output);
         });
 
         // Remove TransactionInputs from UTXO List
@@ -87,7 +122,7 @@ public class Transaction {
             if (input.UTXO == null) {
                 continue;
             }
-            Blockchain.UTXOs.remove(input.UTXO.coinId);
+            blockchain.UTXOs.remove(input.UTXO.coinId);
         }
 
         return true;
@@ -104,12 +139,11 @@ public class Transaction {
         return total;
     }
 
-    public int getOutputsValue() {
-        int total = 0;
-        for (TransactionOutput utxo : utxos) {
-            total += utxo.value;
-        }
-        return total;
-    }
-
+//    public int getOutputsValue() {
+//        int total = 0;
+//        for (TransactionOutput utxo : utxos) {
+//            total += utxo.value;
+//        }
+//        return total;
+//    }
 }
