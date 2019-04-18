@@ -20,7 +20,8 @@ Navigate to the ```dist``` folder and run Launch.bat , or open a Command Prompt 
 ## Contributions
 If you would like to contribute to this project, please fork the repository. Below is a list of tasks that need to be completed:
 - [ ] Fix Saving/Loading data on-close, as recent BIP32/BIP39 implementations broke this feature
-- [ ] Add "newaddress" command to generate a fresh address for the current wallet open
+- [ ] Restore Wallet From Seed option when using `newaccount` command
+- [ ] Add `newaddress` command to generate a fresh address for the current wallet open
 - [ ] Edit Driver.loadWordList() function to check if "Word List.txt" exists before calling Bitcoin's GitHub URL
 
 #### This program is intended for educational purposes only.
